@@ -1,147 +1,150 @@
 import argparse
 import logging
 import os
-
+import svgwrite
+import cairosvg
 import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
 from torchvision import transforms
-
-from utils.data_loading import BasicDataset
-from unet import UNet
-from utils.utils import plot_img_and_mask
+import xml.etree.ElementTree as ET
+from Modelo.utils.data_loading import BasicDataset
+from Modelo.unet import UNet
+from Modelo.utils.utils import plot_img_and_mask
 
 def get_segment_crop(img, mask, cl=[0]):
     img[~np.isin(mask, cl)] = 0
     return img
 
+def mask_to_svg(mask, image_size):
+    dwg = svgwrite.Drawing(size=image_size)
+    
+    height, width = mask.shape
+    visited = np.zeros_like(mask, dtype=bool)
+
+    for y in range(height):
+        x = 0
+        while x < width:
+            if mask[y, x] and not visited[y, x]:
+                # Encontrar o fim do bloco horizontal de pixels contíguos
+                x_start = x
+                while x < width and mask[y, x] and not visited[y, x]:
+                    visited[y, x] = True
+                    x += 1
+                x_end = x
+                
+                # Agora encontramos um bloco horizontal de x_start a x_end na linha y
+                # Verifique se podemos mesclar com as linhas abaixo para formar um retângulo maior
+                y_end = y + 1
+                while y_end < height:
+                    if np.all(mask[y_end, x_start:x_end]) and not np.any(visited[y_end, x_start:x_end]):
+                        visited[y_end, x_start:x_end] = True
+                        y_end += 1
+                    else:
+                        break
+                
+                # Adicionar um único retângulo cobrindo todo o bloco
+                dwg.add(dwg.rect(insert=(x_start, y), size=(x_end - x_start, y_end - y), fill='black'))
+            else:
+                x += 1
+
+    return dwg.tostring()
+
+
 def predict_img(net,
                 full_img,
                 device,
-                image_size=(256, 256),
-                out_threshold=0.5,
-                out_mask_filename='mask.png'):
+                image_size,
+                out_threshold):
     net.eval()
+    if full_img.mode != 'RGB':
+        full_img = full_img.convert('RGB')
     img = torch.from_numpy(BasicDataset.preprocess(None, full_img, image_size, is_mask=False))
     img = img.unsqueeze(0)
     img = img.to(device=device, dtype=torch.float32)
+    
 
     with torch.no_grad():
         output = net(img).cpu()
-        print(f'Ouput shape: {output.shape}')
-        output = F.interpolate(output, (full_img.size[1], full_img.size[0]), mode='bilinear')
+        output = torch.nn.functional.interpolate(output, (full_img.size[1], full_img.size[0]), mode='bilinear')
         
         if net.n_classes > 1:
+            # Segmentação multi-classe
             mask = output.argmax(dim=1)
-
-            # Save all crops masks
-            mask_filename = out_mask_filename[:out_mask_filename.rfind('.')]
+            
+            # Para cada classe, gera o SVG correspondente
             for cl, mask_class in enumerate(output[0]):
                 mask_reshaped = mask.numpy().reshape((mask.shape[1], mask.shape[2]))
-                # Crop each class
-                full_img_cropped = get_segment_crop(np.array(full_img), mask=mask_reshaped, cl=[cl])
-                full_img_cropped = Image.fromarray(full_img_cropped)
-                full_img_cropped.save(f'{mask_filename}-{cl}.png')
-
                 
+                # Aplicar a sigmoide e limiar
                 mask_class = torch.sigmoid(mask_class) > out_threshold
+                mask_class_np = mask_class.numpy().astype(bool)
 
-                # Mask without argmax (only using threshold)
-                mask_class_without_argmax = Image.fromarray(mask_class.numpy().astype(bool))
-                mask_class_without_argmax.save(f'{mask_filename}-{cl}-mask_without_argmax.png')
-
-                # Mask using argmax
-                only_mask_class = get_segment_crop(mask_class.numpy().astype(bool), mask=mask_reshaped, cl=[cl])
-                only_mask_class = Image.fromarray(only_mask_class)
-                only_mask_class.save(f'{mask_filename}-{cl}-mask.png')
+                # Gera o SVG para a classe
+                if(cl == 1):
+                    svg_mask = mask_to_svg(mask_class_np, full_img.size)
                 
 
-            full_img_cropped = get_segment_crop(np.array(full_img), mask=mask_reshaped, cl=range(1, output.shape[1]))
-            full_img_cropped = Image.fromarray(full_img_cropped)
-            full_img_cropped.save(f'{mask_filename}-all_class.png')
+            return svg_mask
 
         else:
+            # Segmentação binária
             mask = torch.sigmoid(output) > out_threshold
 
-    return mask[0].long().squeeze().numpy()
+            # Converte a máscara para numpy e gera SVG
+            mask_numpy = mask[0].long().squeeze().numpy()
+            svg_mask = mask_to_svg(mask_numpy, full_img.size)
+            return svg_mask
 
 
-def get_args():
-    parser = argparse.ArgumentParser(description='Predict masks from input images')
-    parser.add_argument('--model', '-m', default='checkpoints/checkpoint_epoch452.pth', metavar='FILE',
-                        help='Specify the file in which the model is stored')
-    parser.add_argument('--input', '-i', metavar='INPUT', nargs='+', default=['data/test'],
-                        help='Filenames or folder of input images')
-    parser.add_argument('--output', '-o', metavar='OUTPUT', nargs='+', help='Filenames of output images')
-    parser.add_argument('--viz', '-v', action='store_true',
-                        help='Visualize the images as they are processed')
-    parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
-    parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
-                        help='Minimum probability value to consider a mask pixel white')
-    parser.add_argument('--image_size', '-s', type=tuple, default=(256, 256),
-                        help='Resize images')
-    parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
-    parser.add_argument('--classes', '-c', type=int, default=3, help='Number of classes')
-    
-    return parser.parse_args()
 
 
-def get_output_filenames(args):
+def get_output_filenames(input):
     def _generate_name(fn):
         return f'{os.path.splitext(fn)[0]}_OUT.png'
 
-    return args.output or list(map(_generate_name, args.input))
+    return list(map(_generate_name, input))
 
 
-def mask_to_image(mask: np.ndarray, mask_values):
-    if isinstance(mask_values[0], list):
-        out = np.zeros((mask.shape[-2], mask.shape[-1], len(mask_values[0])), dtype=np.uint8)
-    elif mask_values == [0, 1]:
-        out = np.zeros((mask.shape[-2], mask.shape[-1]), dtype=bool)
-    else:
-        out = np.zeros((mask.shape[-2], mask.shape[-1]), dtype=np.uint8)
-        # Add a color for each class (grayscale)
-        interval_colors = 255 / (len(mask_values) - 1)
-        for idx, v in enumerate(mask_values):
-            mask_values[idx] = int(idx * interval_colors)
 
-    if mask.ndim == 3:
-        mask = np.argmax(mask, axis=0)
+#checkpoint, pasta onde está os inputs, salvar ou não salvar(False ou True), limear das mascaras (0.5), tamanho da imagem, bilineares (False), quantidades de classes(int)
+def run_predict(model, input, no_save, mask_threshold, image_size, bilinear, classes):
 
-    for i, v in enumerate(mask_values):
-        out[mask == i] = v
-
-    return Image.fromarray(out)
-
-
-if __name__ == '__main__':
-    args = get_args()
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
-    if os.path.isdir(args.input[0]):
-        filenames = os.listdir(args.input[0])
+    # Se `input` for uma string, transforme-o em uma lista
+    if isinstance(input, str):
+        input = [input]
+
+    # Verifique se o primeiro item da lista é um diretório
+    if os.path.isdir(input[0]):
+        filenames = os.listdir(input[0])
         in_files = []
         for filename in filenames:
-            in_files.append(f'{args.input[0]}/{filename}')
-        args.input = in_files
+            # Verifica se é um arquivo de imagem válido
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
+                in_files.append(os.path.join(input[0], filename))  # Corrige o caminho
+        input = in_files
+    else:
+        in_files = input
 
-    in_files = args.input
+    out_files = get_output_filenames(input)
 
-    out_files = get_output_filenames(args)
-
-    net = UNet(n_channels=3, n_classes=args.classes, bilinear=args.bilinear)
+    net = UNet(n_channels=3, n_classes=classes, bilinear=bilinear)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Loading model {args.model}')
+    logging.info(f'Loading model model')
     logging.info(f'Using device {device}')
 
     net.to(device=device)
-    state_dict = torch.load(args.model, map_location=device)
+    state_dict = torch.load(model, map_location=device)
     mask_values = state_dict.pop('mask_values', [0, 1])
-    net.load_state_dict(state_dict)
+    net.load_state_dict(state_dict['model_state_dict'])
 
     logging.info('Model loaded!')
+
+    svgsList = []
 
     for i, filename in enumerate(in_files):
         logging.info(f'Predicting image {filename} ...')
@@ -149,17 +152,33 @@ if __name__ == '__main__':
 
         mask = predict_img(net=net,
                            full_img=img,
-                           image_size=args.image_size,
-                           out_threshold=args.mask_threshold,
-                           device=device,
-                           out_mask_filename=out_files[i])
+                           image_size=image_size,
+                           out_threshold=mask_threshold,
+                           device=device)
+        
 
-        if not args.no_save:
-            out_filename = out_files[i]
-            result = mask_to_image(mask, mask_values)
-            result.save(out_filename)
+        svgsList.append(mask)
+        
+        if not no_save:
+            
+            # Gera nome de saída para a imagem
+            out_filename = f"{out_files[i].replace('.png', f'_nuvem.png')}"  # Gera nome de saída
+            cairosvg.svg2png(bytestring=mask.encode('utf-8'), write_to=out_filename)
             logging.info(f'Mask saved to {out_filename}')
+            # Se quiser salvar também o SVG, faça assim:
+            svg_filename = f"{out_files[i].replace('.png', f'_nuvem.svg')}"  # Gera nome de saída para SVG
+            # Parseia o SVG string para um objeto ElementTree
+            root = ET.fromstring(mask)
 
-        if args.viz:
-            logging.info(f'Visualizing results for image {filename}, close to continue...')
-            plot_img_and_mask(img, mask)
+            # Agora você pode manipular o SVG como um XML
+            for element in root:
+                print(element.tag, element.attrib)
+
+            # Se quiser salvar ou gerar novamente o SVG
+            tree = ET.ElementTree(root)
+            tree.write(svg_filename)
+            logging.info(f'SVG saved to {svg_filename}')
+
+    return svgsList
+
+        
