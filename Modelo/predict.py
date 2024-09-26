@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from Modelo.utils.data_loading import BasicDataset
 from Modelo.unet import UNet
 from Modelo.utils.utils import plot_img_and_mask
+from Servicos.compressSVG import compress_svg, decompress_svg
 
 def get_segment_crop(img, mask, cl=[0]):
     img[~np.isin(mask, cl)] = 0
@@ -33,16 +34,13 @@ def mask_to_svg(mask, image_size):
                     visited[y, x] = True
                     x += 1
                 x_end = x
-                
+
                 # Agora encontramos um bloco horizontal de x_start a x_end na linha y
-                # Verifique se podemos mesclar com as linhas abaixo para formar um retângulo maior
-                y_end = y + 1
-                while y_end < height:
-                    if np.all(mask[y_end, x_start:x_end]) and not np.any(visited[y_end, x_start:x_end]):
-                        visited[y_end, x_start:x_end] = True
-                        y_end += 1
-                    else:
-                        break
+                # Tentar expandir para linhas abaixo
+                y_end = y
+                while y_end < height and np.all(mask[y_end, x_start:x_end]):
+                    visited[y_end, x_start:x_end] = True
+                    y_end += 1
                 
                 # Adicionar um único retângulo cobrindo todo o bloco
                 dwg.add(dwg.rect(insert=(x_start, y), size=(x_end - x_start, y_end - y), fill='black'))
@@ -109,7 +107,7 @@ def get_output_filenames(input):
 
 
 #checkpoint, pasta onde está os inputs, salvar ou não salvar(False ou True), limear das mascaras (0.5), tamanho da imagem, bilineares (False), quantidades de classes(int)
-def run_predict(model, input, no_save, mask_threshold, image_size, bilinear, classes):
+def run_predict(model, input, output, no_save, mask_threshold, image_size, bilinear, classes):
 
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -156,17 +154,17 @@ def run_predict(model, input, no_save, mask_threshold, image_size, bilinear, cla
                            out_threshold=mask_threshold,
                            device=device)
         
-
-        svgsList.append(mask)
+        svgsList.append(compress_svg(mask))
         
         if not no_save:
-            
+            os.makedirs(output, exist_ok=True)
             # Gera nome de saída para a imagem
-            out_filename = f"{out_files[i].replace('.png', f'_nuvem.png')}"  # Gera nome de saída
+            out_filename = os.path.join(output, f"{out_files[i].replace('.png', f'_nuvem.png')}".split('/')[-1].split("\\")[-1])   # Gera nome de saída
+            print(out_filename)
             cairosvg.svg2png(bytestring=mask.encode('utf-8'), write_to=out_filename)
             logging.info(f'Mask saved to {out_filename}')
             # Se quiser salvar também o SVG, faça assim:
-            svg_filename = f"{out_files[i].replace('.png', f'_nuvem.svg')}"  # Gera nome de saída para SVG
+            svg_filename = os.path.join(output,f"{out_files[i].replace('.png', f'_nuvem.svg')}".split('/')[-1].split("\\")[-1])  # Gera nome de saída para SVG
             # Parseia o SVG string para um objeto ElementTree
             root = ET.fromstring(mask)
 
@@ -178,6 +176,9 @@ def run_predict(model, input, no_save, mask_threshold, image_size, bilinear, cla
             tree = ET.ElementTree(root)
             tree.write(svg_filename)
             logging.info(f'SVG saved to {svg_filename}')
+        
+
+        
 
     return svgsList
 

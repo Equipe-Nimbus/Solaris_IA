@@ -1,4 +1,7 @@
 Modelo/checkpoints/
 Modelo\utils\__pycache__
 Modelo\unet\__pycache__
+Modelo/__pycache__
+Modelo/arquivosProvisorios
+Servicos/__pycache__
 test
