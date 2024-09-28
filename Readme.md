@@ -1,7 +1,12 @@
 # Como usar
 
 ### Intalar Miniconda
+
 https://www.anaconda.com/download/success
+
+### Instale o pythorch
+
+conda install pytorch torchvision torchaudio cpuonly -c pytorch
 
 ### Criar um ambiente anaconda e instalar dependencias
 
