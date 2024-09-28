@@ -43,7 +43,7 @@ def mask_to_svg(mask, image_size):
                     y_end += 1
                 
                 # Adicionar um único retângulo cobrindo todo o bloco
-                dwg.add(dwg.rect(insert=(x_start, y), size=(x_end - x_start, y_end - y), fill='black'))
+                dwg.add(dwg.rect(insert=(x_start, y), size=(x_end - x_start, y_end - y), fill='white'))
             else:
                 x += 1
 
@@ -107,7 +107,7 @@ def get_output_filenames(input):
 
 
 #checkpoint, pasta onde está os inputs, salvar ou não salvar(False ou True), limear das mascaras (0.5), tamanho da imagem, bilineares (False), quantidades de classes(int)
-def run_predict(model, input, output, no_save, mask_threshold, image_size, bilinear, classes):
+def run_predict(model, input, output, no_save, mask_threshold, image_size, bilinear, classes, avaliacao):
 
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -163,19 +163,20 @@ def run_predict(model, input, output, no_save, mask_threshold, image_size, bilin
             print(out_filename)
             cairosvg.svg2png(bytestring=mask.encode('utf-8'), write_to=out_filename)
             logging.info(f'Mask saved to {out_filename}')
-            # Se quiser salvar também o SVG, faça assim:
-            svg_filename = os.path.join(output,f"{out_files[i].replace('.png', f'_nuvem.svg')}".split('/')[-1].split("\\")[-1])  # Gera nome de saída para SVG
-            # Parseia o SVG string para um objeto ElementTree
-            root = ET.fromstring(mask)
+            if(avaliacao == False):
+                # Se quiser salvar também o SVG, faça assim:
+                svg_filename = os.path.join(output,f"{out_files[i].replace('.png', f'_nuvem.svg')}".split('/')[-1].split("\\")[-1])  # Gera nome de saída para SVG
+                # Parseia o SVG string para um objeto ElementTree
+                root = ET.fromstring(mask)
 
-            # Agora você pode manipular o SVG como um XML
-            for element in root:
-                print(element.tag, element.attrib)
+                # Agora você pode manipular o SVG como um XML
+                for element in root:
+                    print(element.tag, element.attrib)
 
-            # Se quiser salvar ou gerar novamente o SVG
-            tree = ET.ElementTree(root)
-            tree.write(svg_filename)
-            logging.info(f'SVG saved to {svg_filename}')
+                # Se quiser salvar ou gerar novamente o SVG
+                tree = ET.ElementTree(root)
+                tree.write(svg_filename)
+                logging.info(f'SVG saved to {svg_filename}')
         
 
         
