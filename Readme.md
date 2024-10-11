@@ -16,7 +16,7 @@ conda env create -f ambiente.yml
 
 https://drive.google.com/drive/folders/1-ePNBLe-q229CPzmYFw9rMh6ZzFmx09R
 
-Coloco o caminho do ckeckpoint na função run_predict do app.py
+Coloque o caminho do ckeckpoint na função run_predict do app.py
 
 ### Rodar a aplicação
 
