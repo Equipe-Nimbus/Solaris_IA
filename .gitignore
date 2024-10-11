@@ -8,3 +8,6 @@ test
 avaliacao/mask/*
 avaliacao/imgs/*
 avaliacao/previsao/*
+CriacaoDataset\DataSet\*
+CriacaoDataset/__pycache__
+CriacaoDataset\DataSet

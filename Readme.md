@@ -10,7 +10,7 @@ conda install pytorch torchvision torchaudio cpuonly -c pytorch
 
 ### Criar um ambiente anaconda e instalar dependencias
 
-conda env create -f environment.yml
+conda env create -f ambiente.yml
 
 ### Baixar um checkout do modelo
 
