@@ -12,7 +12,7 @@ app = Flask(__name__)
 def create_item():
     links = request.json["links"]
     download_file(links)
-    svgs = run_predict("Modelo/checkpoints/checkpoint_epoch40.pth", "Modelo/arquivosProvisorios", "preview/", True, 0.5, (747, 768), False, 2, False)
+    svgs = run_predict("Modelo/checkpoints/checkpoint_epoch40.pth", "Modelo/arquivosProvisorios", "preview/", False, 0.5, (747, 768), False, 2, False)
     delete_downloaded_files(links)
     return jsonify({"svgs":svgs}), 200
 
