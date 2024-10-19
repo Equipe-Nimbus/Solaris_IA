@@ -13,7 +13,7 @@ app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 @app.route('/geraMascaraThumbnail', methods=['POST'])
 def create_item():
     links = request.json["links"]
-    #download_file(links)
+    download_file(links)
     result = run_predict(
         model="Modelo/checkpoints/checkpoint_epoch28.pth", 
         input="Modelo/arquivosProvisorios", 
@@ -25,7 +25,7 @@ def create_item():
         classes=3, 
         avaliacao=False
     )
-    #delete_downloaded_files(links)
+    delete_downloaded_files(links)
     # Retornar os links de download
     return jsonify(result), 200
 
