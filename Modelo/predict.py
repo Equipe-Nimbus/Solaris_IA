@@ -348,4 +348,4 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
             download_link = f"http://localhost:8080/download/{os.path.basename(svg_filename)}"
             download_links.append(download_link)
 
-    return {"svgs": svgsList, "download_links": download_links}
+    return {"pngs": svgsList, "download_links": download_links}
