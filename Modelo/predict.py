@@ -11,7 +11,7 @@ from Modelo.unet import UNet
 from Servicos.compressSVG import compress_svg
 import xml.etree.ElementTree as ET
 import base64
-from Servicos.pegarSvg import read_svg_file 
+#from Servicos.pegarSvg import read_svg_file 
 from Servicos.compressPNG import svg_to_png_base64
 
 # Definir o caminho da pasta de arquivos provisórios
@@ -311,18 +311,18 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
         logging.info(f'Predicting image {filename} ...')
         svg = filename.split('/')[0]+ "/preview/" + filename.split('/')[1].split('\\')[1].split('.')[0] + "_OUT_multiclass_mask.svg"
         print(svg)
-        if(not os.path.exists(svg)):
-            chunk_paths, new_size = process_large_tiff_and_save_chunks(
-                tiff_file=filename,
-                model=model,
-                chunk_size=(1024, 1024),
-                device=device,
-                resize_factor=refactor_size
-            )
+        #if(not os.path.exists(svg)):
+        chunk_paths, new_size = process_large_tiff_and_save_chunks(
+            tiff_file=filename,
+            model=model,
+            chunk_size=(1024, 1024),
+            device=device,
+            resize_factor=refactor_size
+        )
 
-            svg_final = merge_chunks_to_svg(chunk_paths, x_size=new_size[0], y_size=new_size[1])
-        else:
-            svg_final = read_svg_file(svg)
+        svg_final = merge_chunks_to_svg(chunk_paths, x_size=new_size[0], y_size=new_size[1])
+        #else:
+        #    svg_final = read_svg_file(svg)
             
         """ # Ajuste para usar dimensões menores e gerar SVG comprimido
         compressed_svg = compress_svg(svg_final, width=747, height=768)
