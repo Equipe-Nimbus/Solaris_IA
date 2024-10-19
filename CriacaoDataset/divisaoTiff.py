@@ -2,7 +2,7 @@ from osgeo import gdal
 import os
 
 # Carregar a imagem TIFF original
-nomeArquivo = "CBERS4A_WPM_PCA_RGB321_20241001_239_118"
+nomeArquivo = "CBERS4A_WPM_PCA_RGB321_20241004_195_135"
 input_file = f'DataSet/originais/{nomeArquivo}.tif'
 output_dir = 'DataSet/imgs'
 os.makedirs(output_dir, exist_ok=True)

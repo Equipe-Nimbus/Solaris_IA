@@ -2,7 +2,7 @@ Modelo/checkpoints/*
 Modelo\utils\__pycache__
 Modelo\unet\__pycache__
 Modelo/__pycache__
-Modelo/arquivosProvisorios
+Modelo/arquivosProvisorios/*
 Servicos/__pycache__
 test
 avaliacao/mask/*
@@ -10,4 +10,10 @@ avaliacao/imgs/*
 avaliacao/previsao/*
 CriacaoDataset\DataSet\*
 CriacaoDataset/__pycache__
-CriacaoDataset\DataSet
+CriacaoDataset\DataSet\*
+preview/*
+Modelo/chunks/*
+CriacaoDataset\DataSet\anotacao
+CriacaoDataset\DataSet\feito
+CriacaoDataset\DataSet\imgs
+CriacaoDataset\DataSet\originais
