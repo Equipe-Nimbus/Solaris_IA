@@ -7,7 +7,8 @@ from PIL import Image
 
 def interactive_mask_editor(original_img, multiclasse_mask, radius=5):
     """
-    Função para permitir a edição interativa da máscara multiclasse com modos de retoque para sombras, nuvens e background.
+    Função para permitir a edição interativa da máscara multiclasse com modos de retoque para sombras, nuvens e background,
+    utilizando seleções feitas tanto na imagem original quanto na máscara.
 
     Args:
         original_img (numpy array): A imagem original colorida para exibição como referência.
@@ -40,8 +41,8 @@ def interactive_mask_editor(original_img, multiclasse_mask, radius=5):
         ax2.set_title('Máscara Multiclasse (Retoque: Background)')
         fig.canvas.draw_idle()
 
-    # Função para aplicar as mudanças na máscara com base no modo atual
-    def on_select(verts):
+    # Função para aplicar as mudanças na máscara com base no modo atual, a partir da imagem original
+    def on_select_original(verts):
         nonlocal multiclasse_mask, current_selection
 
         # Salvar o estado atual da máscara antes de modificar (para poder desfazer)
@@ -51,7 +52,39 @@ def interactive_mask_editor(original_img, multiclasse_mask, radius=5):
         # Criar uma grade com as coordenadas de todos os pixels
         x, y = np.meshgrid(np.arange(multiclasse_mask.shape[1]), np.arange(multiclasse_mask.shape[0]))
         coords = np.vstack((x.flatten(), y.flatten())).T
-        # Verificar quais coordenadas estão dentro da área selecionada
+        # Verificar quais coordenadas estão dentro da área selecionada na imagem original
+        mask = path.contains_points(coords).reshape(multiclasse_mask.shape)
+
+        # Aplicar uma dilatação na área selecionada para simular um raio maior
+        if radius > 1:
+            selem = morphology.disk(radius)
+            mask = morphology.dilation(mask, selem)
+
+        # Atualizar a seleção atual para o tipo de máscara correspondente ao modo
+        current_selection = mask
+
+        # Modificar apenas a nova seleção, mantendo as áreas já ajustadas
+        if retoque_mode == 'sombra':
+            multiclasse_mask[current_selection] = 1  # Retoque de sombra (valor 1)
+        elif retoque_mode == 'nuvem':
+            multiclasse_mask[current_selection] = 2  # Retoque de nuvem (valor 2)
+        elif retoque_mode == 'background':
+            multiclasse_mask[current_selection] = 0  # Retoque de background (valor 0)
+
+        update_mask(img_mask)
+
+    # Função para aplicar as mudanças na máscara com base no modo atual, a partir da máscara
+    def on_select_mask(verts):
+        nonlocal multiclasse_mask, current_selection
+
+        # Salvar o estado atual da máscara antes de modificar (para poder desfazer)
+        mask_history.append(multiclasse_mask.copy())
+
+        path = Path(verts)
+        # Criar uma grade com as coordenadas de todos os pixels
+        x, y = np.meshgrid(np.arange(multiclasse_mask.shape[1]), np.arange(multiclasse_mask.shape[0]))
+        coords = np.vstack((x.flatten(), y.flatten())).T
+        # Verificar quais coordenadas estão dentro da área selecionada na máscara
         mask = path.contains_points(coords).reshape(multiclasse_mask.shape)
 
         # Aplicar uma dilatação na área selecionada para simular um raio maior
@@ -89,7 +122,7 @@ def interactive_mask_editor(original_img, multiclasse_mask, radius=5):
 
     # Exibir imagem original à esquerda (com cores originais)
     ax1.imshow(original_img)
-    ax1.set_title('Imagem Original (Referência)')
+    ax1.set_title('Imagem Original (Seleção)')
     ax1.axis('off')
 
     # Exibir máscara à direita
@@ -97,8 +130,9 @@ def interactive_mask_editor(original_img, multiclasse_mask, radius=5):
     ax2.set_title('Máscara Multiclasse (Retoque: Sombra)')
     ax2.axis('off')
 
-    # Permitir a seleção de áreas na máscara
-    lasso = LassoSelector(ax2, on_select)
+    # Permitir a seleção de áreas tanto na imagem original quanto na máscara
+    lasso_original = LassoSelector(ax1, on_select_original)  # Seleção na imagem original
+    lasso_mask = LassoSelector(ax2, on_select_mask)  # Seleção na máscara
 
     # Adicionar botão para mudar para o modo Sombra
     ax_button_sombra = plt.axes([0.7, 0.05, 0.1, 0.075])

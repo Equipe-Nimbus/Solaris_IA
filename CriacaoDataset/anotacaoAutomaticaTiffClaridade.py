@@ -12,7 +12,7 @@ from refinamentoManualSelecao import interactive_mask_editor
 
 
 # Abrir a imagem TIFF
-imageName="CBERS4A_WPM_PCA_RGB321_20241004_195_120.tif_54272_13312"
+imageName="CBERS4A_WPM_PCA_RGB321_20241004_195_135_34816_28672"
 image_path = f'DataSet\imgs\{imageName}.tif'
 #image_path = f'DataSet\\feito\{imageName}.tif'
 destino_pasta = f'DataSet\\feito\{imageName}.tif'
@@ -29,14 +29,14 @@ gray_np = np.array(gray_img)
 
 # Aplicar threshold Otsu para detectar nuvens (partes claras da imagem)
 #thresh_value_nuvem = threshold_otsu(gray_np)
-thresh_value_nuvem = 130
+thresh_value_nuvem = 170
 nuvem_mask = (gray_np > thresh_value_nuvem).astype(np.uint8)
 
 
 
 # Aplicar threshold Otsu inverso para detectar sombras (partes escuras)
 #thresh_value_sombra = threshold_otsu(gray_np)
-thresh_value_sombra = 90
+thresh_value_sombra = 80
 sombra_mask = (gray_np < thresh_value_sombra).astype(np.uint8)
 
 
