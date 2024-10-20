@@ -24,9 +24,8 @@ def svg_to_png_base64(svg_content, width=747, height=768):
         # Usar cairosvg para converter o SVG para PNG
         png_bytes = cairosvg.svg2png(bytestring=svg_content.encode('utf-8'), output_width=width, output_height=height)
 
-        # Converter para Base64
-        png_base64 = base64.b64encode(png_bytes).decode('utf-8')
-        return png_base64
+        
+        return png_bytes
 
     except Exception as e:
         logging.error(f"Erro ao converter SVG para PNG Base64: {e}")
