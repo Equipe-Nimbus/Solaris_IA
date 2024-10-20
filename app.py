@@ -15,7 +15,7 @@ def create_item():
     links = request.json["links"]
     #download_file(links)
     result = run_predict(
-        model="Modelo/checkpoints/checkpoint_epoch28.pth", 
+        model="Modelo/checkpoints/checkpoint_epoch31.pth", 
         input="Modelo/arquivosProvisorios", 
         output=OUTPUT_FOLDER, 
         no_save=False, 
@@ -33,6 +33,10 @@ def create_item():
 def download_file(filename):
     print(filename)
     return send_from_directory(app.config['OUTPUT_FOLDER'], filename, as_attachment=True)
+
+@app.route('/view/<filename>', methods=['GET'])
+def view_file(filename):
+    return send_from_directory(app.config['OUTPUT_FOLDER'], filename)
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080, use_reloader=False)  # Especificando a porta 8080

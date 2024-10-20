@@ -304,7 +304,7 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
     net.load_state_dict(state_dict['model_state_dict'])
 
     logging.info('Model loaded!')
-    svgsList = []
+    pngsList = []
     download_links = []  # Para armazenar os links de download
 
     for i, filename in enumerate(in_files):
@@ -331,21 +331,30 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
 
         # Converta o SVG final para PNG e salve
         png_data = svg_to_png_base64(svg_final, width=747, height=768)
-        
-        svgsList.append(png_data)
 
 
         if not no_save:
             os.makedirs(output, exist_ok=True)
             print(output)
             print(out_files)
-            svg_filename = os.path.join(output, f"{out_files[i].replace('.png', f'_multiclass_mask.svg')}".split('/')[-1].split("\\")[-1])
+            svg_filename = os.path.join(output, f"{out_files[i].replace('.png', f'.svg')}".split('/')[-1].split("\\")[-1])
             with open(svg_filename, 'w', encoding='utf-8') as f:
                 f.write(svg_final)
             logging.info(f'SVG saved to {svg_filename}')
+            
 
             # Adicionar o link de download
             download_link = f"http://localhost:8080/download/{os.path.basename(svg_filename)}"
             download_links.append(download_link)
 
-    return {"svgs": svgsList, "download_links": download_links}
+            # Salvar o PNG convertido
+            png_filename = os.path.join(output, f"{out_files[i]}".split('/')[-1].split("\\")[-1])
+            with open(png_filename, 'wb') as f:
+                f.write(png_data)  # Decodifique a string Base64 para bytes e salve como PNG
+            logging.info(f'PNG saved to {png_filename}')
+            
+            # Adicionar o link de download para o PNG
+            png_download_link = f"http://localhost:8080/view/{os.path.basename(png_filename)}"
+            pngsList.append(png_download_link)
+
+    return {"pngs": pngsList, "download_links": download_links}
