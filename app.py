@@ -30,7 +30,7 @@ def create_item():
     return jsonify(result), 200
 
 @app.route('/download/<filename>', methods=['GET'])
-def download_file(filename):
+def download_files(filename):
     print(filename)
     return send_from_directory(app.config['OUTPUT_FOLDER'], filename, as_attachment=True)
 
