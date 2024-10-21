@@ -1,23 +1,45 @@
 from Modelo.predict import run_predict
 from Servicos.delete import delete_downloaded_files
 from Servicos.download import download_file
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 
 #Thumbnail 
+OUTPUT_FOLDER = "preview"
 
 
 app = Flask(__name__)
+app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 
 @app.route('/geraMascaraThumbnail', methods=['POST'])
 def create_item():
     links = request.json["links"]
     download_file(links)
-    svgs = run_predict("Modelo/checkpoints/checkpoint_epoch40.pth", "Modelo/arquivosProvisorios", "preview/", True, 0.5, (747, 768), False, 2, False)
+    result = run_predict(
+        model="Modelo/checkpoints/checkpoint_epoch31.pth", 
+        input="Modelo/arquivosProvisorios", 
+        output=OUTPUT_FOLDER, 
+        no_save=False, 
+        mask_threshold=0.5, 
+        refactor_size=0.1, 
+        bilinear=False, 
+        classes=3, 
+        avaliacao=False
+    )
     delete_downloaded_files(links)
-    return jsonify({"svgs":svgs}), 200
+    # Retornar os links de download
+    return jsonify(result), 200
+
+@app.route('/download/<filename>', methods=['GET'])
+def download_files(filename):
+    print(filename)
+    return send_from_directory(app.config['OUTPUT_FOLDER'], filename, as_attachment=True)
+
+@app.route('/view/<filename>', methods=['GET'])
+def view_file(filename):
+    return send_from_directory(app.config['OUTPUT_FOLDER'], filename)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080)  # Especificando a porta 8080
+    app.run(debug=True, port=8080, use_reloader=False)  # Especificando a porta 8080
 
 
 
