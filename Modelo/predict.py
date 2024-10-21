@@ -309,7 +309,7 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
 
     for i, filename in enumerate(in_files):
         logging.info(f'Predicting image {filename} ...')
-        svg = filename.split('/')[0]+ "/preview/" + filename.split('/')[1].split('\\')[1].split('.')[0] + "_OUT_multiclass_mask.svg"
+        svg = filename.split('/')[0]+ "/preview/" + filename.split('/')[2].split('.')[0] + "_OUT_multiclass_mask.svg"
         print(svg)
         #if(not os.path.exists(svg)):
         chunk_paths, new_size = process_large_tiff_and_save_chunks(

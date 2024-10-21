@@ -10,6 +10,9 @@ import logging
 import seaborn as sns
 import matplotlib.pyplot as plt
 from Modelo.predict import run_predict
+from Solaris_IA.Modelo.predict_without_chunks import predict_all_from_folder
+from Solaris_IA.Modelo.unet.unet_model import UNet
+
 
 # Função para carregar as máscaras (ajustada para 1 canal)
 def load_mask(mask_path, image_size):
@@ -114,10 +117,15 @@ def main(model_path, image_dir, mask_dir):
     predict_dir = "avaliacao/previsao"
     there_is_not_pred = len([os.path.join(image_dir, f) for f in os.listdir(predict_dir) if f.endswith('.png')][:50]) == 0
     # Listar as imagens e as máscaras (carregar até 130)
-    if(there_is_not_pred):
-        run_predict(model_path, "avaliacao/imgs", "avaliacao/previsao", False, 0.5, (747, 768), False, 2, True)
-    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if(there_is_not_pred):
+        net = UNet(n_channels=3, n_classes=3, bilinear=False)
+       
+        net.to(device=device)
+        state_dict = torch.load(model_path, map_location=device)
+        net.load_state_dict(state_dict['model_state_dict'])
+        predict_all_from_folder(net, "avaliacao/imgs", "avaliacao/previsao", device)
+    
 
     predict_paths = [os.path.join(predict_dir, f) for f in os.listdir(predict_dir) if f.endswith('.png')][:50]
     image_paths = [os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith('.png')][:50]
