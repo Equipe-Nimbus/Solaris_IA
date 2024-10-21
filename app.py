@@ -39,7 +39,7 @@ def view_file(filename):
     return send_from_directory(app.config['OUTPUT_FOLDER'], filename)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080, use_reloader=False)  # Especificando a porta 8080
+    app.run(host="0.0.0.0", port=8080)  # Especificando a porta 8080
 
 
 
