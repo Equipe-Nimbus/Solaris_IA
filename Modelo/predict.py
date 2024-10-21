@@ -308,6 +308,8 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
     download_links = []  # Para armazenar os links de download
 
     for i, filename in enumerate(in_files):
+        if "\\" in filename:
+            filename = filename.replace("\\", "/")
         logging.info(f'Predicting image {filename} ...')
         svg = filename.split('/')[0]+ "/preview/" + filename.split('/')[2].split('.')[0] + "_OUT_multiclass_mask.svg"
         print(svg)
