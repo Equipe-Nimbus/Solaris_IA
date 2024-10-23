@@ -10,8 +10,8 @@ import logging
 import seaborn as sns
 import matplotlib.pyplot as plt
 from Modelo.predict import run_predict
-from Solaris_IA.Modelo.predict_without_chunks import predict_all_from_folder
-from Solaris_IA.Modelo.unet.unet_model import UNet
+from Modelo.predict_without_chunks import predict_all_from_folder
+from Modelo.unet.unet_model import UNet
 
 
 # Função para carregar as máscaras (ajustada para 1 canal)
@@ -48,7 +48,7 @@ def evaluate_and_compare(image_paths, mask_paths, predict_paths, device, image_s
 
         # Permutar as dimensões para (H, W, C) antes de exibir
         img_np = img_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-        # Exibir a imagem original que está sendo analisada
+        """ # Exibir a imagem original que está sendo analisada
         plt.imshow(img_np)
         plt.title(f'Analisando: {os.path.basename(img_path)}\nMáscara: {os.path.basename(mask_path)}')
         plt.axis('off')
@@ -71,7 +71,7 @@ def evaluate_and_compare(image_paths, mask_paths, predict_paths, device, image_s
         ax[2].set_title('Máscara Prevista')
         ax[2].axis('off')
 
-        plt.show()
+        plt.show() """
 
         # Binarizar ambas as máscaras para comparação correta
         mask_true_np = (mask_true.cpu().numpy() > 0).astype(np.uint8)  # Máscara real
@@ -128,13 +128,14 @@ def main(model_path, image_dir, mask_dir):
     
 
     predict_paths = [os.path.join(predict_dir, f) for f in os.listdir(predict_dir) if f.endswith('.png')][:50]
-    image_paths = [os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith('.png')][:50]
+    image_paths = [os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith('.tif')][:50]
     mask_paths = [os.path.join(mask_dir, f) for f in os.listdir(mask_dir) if f.endswith('.png')][:50]
 
     print("Teste pred path: " + predict_paths[0])
     # Verificar se a quantidade de imagens e máscaras bate
-    assert len(image_paths) == len(mask_paths) and len(image_paths)==len(predict_paths) and len(mask_paths)==len(predict_paths), "A quantidade de imagens e máscaras não corresponde"
-
+    assert len(image_paths) == len(mask_paths) and len(image_paths) == len(predict_paths) and len(mask_paths) == len(predict_paths), (
+    f"A quantidade de imagens ({len(image_paths)}), máscaras ({len(mask_paths)}) e previsões ({len(predict_paths)}) não corresponde."
+    )
     # Avaliar a rede e capturar os resultados
     acc, prec, rec, f1, conf_matrix = evaluate_and_compare(image_paths, mask_paths, predict_paths, device)
 
@@ -149,7 +150,7 @@ def main(model_path, image_dir, mask_dir):
 
 # Chamada da função principal
 if __name__ == '__main__':
-    model_path = './Modelo/checkpoints/checkpoint_epoch49.pth'  # Substitua pelo caminho do seu modelo
+    model_path = './Modelo/checkpoints/checkpoint_epoch31.pth'  # Substitua pelo caminho do seu modelo
     image_dir = './avaliacao/imgs'  # Substitua pelo caminho das suas imagens
     mask_dir = './avaliacao/mask'  # Substitua pelo caminho das suas máscaras
 
