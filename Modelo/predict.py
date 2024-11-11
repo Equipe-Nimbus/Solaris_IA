@@ -310,6 +310,6 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
 
             png_output = os.path.join(output, f"{filename.replace('.tif', '.png')}".split('/')[-1].split("\\")[-1])
             geojson_to_png(geojson_output, png_output)
-            pngsList.append(f"http://localhost:8080/download/{os.path.basename(png_output)}")
+            pngsList.append(f"http://localhost:8080/view/{os.path.basename(png_output)}")
 
     return {"pngs": pngsList, "download_links": download_links}
