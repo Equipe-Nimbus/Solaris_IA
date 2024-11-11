@@ -10,7 +10,7 @@ from PIL import Image
 from Modelo.unet import UNet
 import json
 from shapely.geometry import Polygon, mapping
-#from Servicos.geojsonToPNG import geojson_to_png
+from Servicos.geojsonToPNG import geojson_to_png
 from Modelo.predict_thumbnail import predict_and_save
 
 # Definir o caminho da pasta de arquivos provisórios
@@ -305,11 +305,11 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
                 json.dump(geojson_data, f)
             logging.info(f'GeoJSON saved to {geojson_output}')
 
-            geojson_list.append(geojson_output)
+            #geojson_list.append(geojson_output)
             download_links.append(f"http://localhost:8080/download/{os.path.basename(geojson_output)}")
 
             png_output = os.path.join(output, f"{filename.replace('.tif', '.png')}".split('/')[-1].split("\\")[-1])
-            preview_links = combine_and_resize_chunks(preview_paths, png_output, filename, (1024,1024), (1024,1024), refactor_size)
-            pngsList.append(preview_links)
+            geojson_to_png(geojson_output, png_output)
+            pngsList.append(f"http://localhost:8080/view/{os.path.basename(png_output)}")
 
     return {"pngs": pngsList, "download_links": download_links}
