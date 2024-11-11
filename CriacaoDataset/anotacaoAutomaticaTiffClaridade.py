@@ -12,7 +12,7 @@ from refinamentoManualSelecao import interactive_mask_editor
 
 
 # Abrir a imagem TIFF
-imageName="CBERS4A_WPM_PCA_RGB321_20241020_229_107_1024_37888"
+imageName="CBERS4A_WPM_PCA_RGB321_20241020_229_107_41984_50176"
 image_path = f'CriacaoDataset\DataSet\imgs\{imageName}.tif'
 #image_path = f'DataSet\\feito\{imageName}.tif'
 destino_pasta = f'CriacaoDataset\DataSet\\feito\{imageName}.tif'
@@ -29,7 +29,7 @@ gray_np = np.array(gray_img)
 
 # Aplicar threshold Otsu para detectar nuvens (partes claras da imagem)
 #thresh_value_nuvem = threshold_otsu(gray_np)
-thresh_value_nuvem = 110
+thresh_value_nuvem = 190
 nuvem_mask = (gray_np > thresh_value_nuvem).astype(np.uint8)
 
 
