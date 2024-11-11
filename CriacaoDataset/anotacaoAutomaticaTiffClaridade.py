@@ -12,10 +12,10 @@ from refinamentoManualSelecao import interactive_mask_editor
 
 
 # Abrir a imagem TIFF
-imageName="CBERS4A_WPM_PCA_RGB321_20241004_195_135_34816_28672"
-image_path = f'DataSet\imgs\{imageName}.tif'
+imageName="CBERS4A_WPM_PCA_RGB321_20241020_229_107_41984_50176"
+image_path = f'CriacaoDataset\DataSet\imgs\{imageName}.tif'
 #image_path = f'DataSet\\feito\{imageName}.tif'
-destino_pasta = f'DataSet\\feito\{imageName}.tif'
+destino_pasta = f'CriacaoDataset\DataSet\\feito\{imageName}.tif'
 try:
     img = Image.open(image_path)
 except:
@@ -29,15 +29,15 @@ gray_np = np.array(gray_img)
 
 # Aplicar threshold Otsu para detectar nuvens (partes claras da imagem)
 #thresh_value_nuvem = threshold_otsu(gray_np)
-thresh_value_nuvem = 170
+thresh_value_nuvem = 190
 nuvem_mask = (gray_np > thresh_value_nuvem).astype(np.uint8)
 
 
 
 # Aplicar threshold Otsu inverso para detectar sombras (partes escuras)
 #thresh_value_sombra = threshold_otsu(gray_np)
-thresh_value_sombra = 80
-sombra_mask = (gray_np < thresh_value_sombra).astype(np.uint8)
+thresh_value_sombra = 50
+sombra_mask = ((gray_np < thresh_value_sombra) & (gray_np > 0)).astype(np.uint8)
 
 
 # Aplicar dilatação para ajustar as áreas de nuvens e sombras
@@ -48,7 +48,7 @@ kernel_sombra = morphology.disk(kernel_sombra)
 
 # Remover pequenos objetos das máscaras
 nuvem_mask_refined = morphology.remove_small_objects(nuvem_mask.astype(bool), min_size=300)
-sombra_mask_refined = morphology.remove_small_objects(sombra_mask.astype(bool), min_size=2300)
+sombra_mask_refined = morphology.remove_small_objects(sombra_mask.astype(bool), min_size=300)
 
 
 
@@ -79,7 +79,7 @@ background_mask = (multiclasse_mask == 0).astype(np.uint8)
 labels = measure.label(background_mask, connectivity=1)
 
 # Definir o tamanho mínimo e máximo para os componentes conectados de background
-min_size_background = 7500  # Tamanho mínimo
+min_size_background = 5000  # Tamanho mínimo
 max_size_background = 1000  # Tamanho máximo, que você pode ajustar conforme necessário
 
 # Filtrar componentes conectados no background
@@ -103,7 +103,7 @@ interactive_mask_editor(img, multiclasse_mask, radius=selecao_raio)
 multiclasse_mask_scaled = (multiclasse_mask * 127).astype(np.uint8)
 # Converter para imagem PIL e salvar a máscara multiclasse
 multiclasse_img = Image.fromarray(multiclasse_mask_scaled)
-multiclasse_img.save(f'DataSet/anotacao/{imageName}.png')
+multiclasse_img.save(f'CriacaoDataset/DataSet/anotacao/{imageName}.png')
 
 try:
     shutil.move(image_path, destino_pasta)
