@@ -14,6 +14,8 @@ dependencies:
   - tqdm
   - cairo
   - pip
+  - shapely
+  - geopandas
   - pip:
       - cairosvg
       - svgwrite

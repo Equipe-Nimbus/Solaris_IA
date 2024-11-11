@@ -1,88 +1,73 @@
 import os
 import tempfile
-import svgwrite
 import torch
 import logging
 import numpy as np
+import time
 from osgeo import gdal
 from tqdm import tqdm
 from PIL import Image
 from Modelo.unet import UNet
-from Servicos.compressSVG import compress_svg
-import xml.etree.ElementTree as ET
-import base64
-#from Servicos.pegarSvg import read_svg_file 
-from Servicos.compressPNG import svg_to_png_base64
+import json
+from shapely.geometry import Polygon, mapping
+#from Servicos.geojsonToPNG import geojson_to_png
+from Modelo.predict_thumbnail import predict_and_save
 
 # Definir o caminho da pasta de arquivos provisórios
 PROVISORY_FOLDER = "Modelo/chunks"
 
-# Função para converter SVG comprimido para uma string base64
-def convert_svg_to_base64(svg_bytes):
-    """
-    Converte SVG em bytes para uma string base64 para ser enviada como JSON.
-    
-    Args:
-        svg_bytes (bytes): Dados do SVG comprimido.
-    
-    Returns:
-        str: String base64 do SVG.
-    """
-    return base64.b64encode(svg_bytes).decode('utf-8')
+# Função para gerar nomes de arquivos de saída
+def get_output_filenames(input_files):
+    def _generate_name(filename):
+        return f'{os.path.splitext(filename)[0]}_OUT.png'
+    return list(map(_generate_name, input_files))
 
-def get_output_filenames(input):
-    def _generate_name(fn):
-        return f'{os.path.splitext(fn)[0]}_OUT.png'
-    return list(map(_generate_name, input))
-
+# Função para redimensionar um arquivo TIFF
 def resize_tiff(tiff_file, new_width, new_height, output_file):
-    """
-    Redimensiona um arquivo TIFF sem cortar partes da imagem original.
-    
-    Args:
-        tiff_file (str): Caminho para o arquivo TIFF original.
-        new_width (int): Largura desejada para o novo TIFF.
-        new_height (int): Altura desejada para o novo TIFF.
-        output_file (str): Caminho para salvar o TIFF redimensionado.
-    """
     try:
-        # Abrir o dataset de origem
         src_ds = gdal.Open(tiff_file)
         if src_ds is None:
             logging.error(f"Erro: Não foi possível abrir o arquivo TIFF: {tiff_file}")
             return
         
-        # Usar gdal.Warp para redimensionar a imagem preservando a proporção
         gdal.Warp(
             destNameOrDestDS=output_file,
-            srcDSOrSrcDSTab=src_ds,  # Fonte de dados é especificada corretamente agora
+            srcDSOrSrcDSTab=src_ds,
             width=new_width,
             height=new_height,
             resampleAlg=gdal.GRA_Bilinear,
-            dstSRS=src_ds.GetProjection(),  # Manter o sistema de coordenadas de referência
-            options=["-overwrite"]  # Permitir sobrescrever se o arquivo existir
+            dstSRS=src_ds.GetProjection(),
+            options=["-overwrite"]
         )
         logging.info(f"Imagem redimensionada salva em: {output_file}")
     except Exception as e:
         logging.error(f"Erro ao redimensionar a imagem: {e}")
 
-# Função para gerar o SVG de uma máscara multiclasse com sobreposição leve
-def mask_to_svg_multiclass(mask, image_size, overlap=1):
-    dwg = svgwrite.Drawing(size=image_size)
+# Função para converter uma máscara para GeoJSON
+def mask_to_geojson_multiclass(mask, x_offset, y_offset, geotransform):
+    features = []
     height, width = mask.shape
     visited = np.zeros_like(mask, dtype=bool)
+    
+    # Verificar se o `mask` contém apenas zeros
+    if np.all(mask == 0):
+        logging.info("Mask contains only zeros; no features to process.")
+        return features  # Retorna vazio sem entrar nos loops
 
-    for y in range(height):
+    # Barra de progresso para as linhas (y)
+    for y in tqdm(range(height), desc="Processing Rows"):
         x = 0
         while x < width:
-            if mask[y, x] != 0 and not visited[y, x]:
+            if x < width and y < height and mask[y, x] != 0 and not visited[y, x]:
                 mask_value = mask[y, x]
-                fill_color = 'white' if mask_value == 255 else 'gray'
-
+                
                 x_start = x
-                while x < width and mask[y, x] == mask_value and not visited[y, x]:
-                    visited[y, x] = True
-                    x += 1
+                # Barra de progresso para as colunas (x)
+                with tqdm(total=width - x, desc="Processing Columns", leave=False) as pbar:
+                    while x < width and mask[y, x] == mask_value and not visited[y, x]:
+                        visited[y, x] = True
+                        x += 1
+                        pbar.update(1)
                 x_end = x
 
                 y_end = y
@@ -90,45 +75,61 @@ def mask_to_svg_multiclass(mask, image_size, overlap=1):
                     visited[y_end, x_start:x_end] = True
                     y_end += 1
 
-                # Adicionar um pequeno overlap (sobreposição) para evitar linhas
-                dwg.add(dwg.rect(
-                    insert=(x_start - overlap, y - overlap), 
-                    size=(x_end - x_start + overlap * 2, y_end - y + overlap * 2), 
-                    fill=fill_color, 
-                    stroke='none'
-                ))
+                pixel_coords = [(x_start, y), (x_end, y), (x_end, y_end), (x_start, y_end)]
+                geo_coords = []
+                for px, py in pixel_coords:
+                    geo_x = geotransform[0] + (px + x_offset) * geotransform[1] + (py + y_offset) * geotransform[2]
+                    geo_y = geotransform[3] + (px + x_offset) * geotransform[4] + (py + y_offset) * geotransform[5]
+                    geo_coords.append((geo_x, geo_y))
+                
 
+                if(int(mask_value)==127):
+                    classe = "Shadow"
+                elif(int(mask_value)==255):
+                    classe = "Cloud"
+                else:
+                    classe = "Background"
+
+                poly = Polygon(geo_coords)
+                features.append({
+                    "type": "Feature",
+                    "geometry": mapping(poly),
+                    "properties": {"class": classe}
+                })
             else:
-                x += 1
+                x += 1  # Avança `x` se o pixel for `0` ou já foi visitado
 
-    return dwg
+    return features
 
-# Função para salvar um chunk de imagem como PNG
-def save_chunk_image(chunk, x_chunk, y_chunk, chunk_index):
+# Função para salvar um chunk como GeoJSON
+def save_chunk_geojson(mask_chunk, x_offset, y_offset, geotransform, output_dir, chunk_index):
+    features = mask_to_geojson_multiclass(mask_chunk, x_offset, y_offset, geotransform)
+    geojson_data = {
+        "type": "FeatureCollection",
+        "features": features
+    }
+
     os.makedirs(PROVISORY_FOLDER, exist_ok=True)
-    chunk_image_path = os.path.join(PROVISORY_FOLDER, f"chunk_{chunk_index}.png")
+    geojson_filename = os.path.join(PROVISORY_FOLDER, f"chunk_{chunk_index}.geojson")
+    with open(geojson_filename, 'w', encoding='utf-8') as f:
+        json.dump(geojson_data, f)
+
+    return geojson_filename
+
+# Função para salvar um chunk de imagem como PNG diretamente da máscara
+def save_chunk_image_from_mask(mask_chunk, x_chunk, y_chunk, chunk_index):
+    os.makedirs(PROVISORY_FOLDER, exist_ok=True)
+    chunk_image_path = os.path.join(PROVISORY_FOLDER, f"chunk_{chunk_index}_preview.png")
     
-    # Converter o chunk para uma imagem PIL e salvar como PNG
-    chunk_image = np.moveaxis(chunk, 0, -1)  # Mover os canais para o final (de [C, H, W] para [H, W, C])
-    
-    # Verificar se o chunk contém apenas valores baixos (muito escuros)
-    logging.info(f"Valores do chunk {chunk_index}: Min={np.min(chunk_image)}, Max={np.max(chunk_image)}")
-    
-    chunk_image = Image.fromarray(chunk_image.astype(np.uint8))
-    chunk_image.save(chunk_image_path)
+    # Converte a máscara para uma imagem RGB
+    chunk_image = np.zeros((y_chunk, x_chunk, 3), dtype=np.uint8)
+    chunk_image[mask_chunk == 255] = [255, 255, 255]  # Nuvens em branco
+    chunk_image[mask_chunk == 127] = [127, 127, 127]  # Sombras em cinza
+
+    # Salva como PNG
+    Image.fromarray(chunk_image).save(chunk_image_path)
 
     return chunk_image_path
-
-# Função para adicionar um chunk ao SVG final
-def append_chunk_to_svg(svg, chunk_path, x_offset, y_offset):
-    svg_chunk = svgwrite.Drawing(filename=chunk_path)
-
-    # Adicionar o conteúdo do chunk ao SVG final, ajustando as posições
-    for element in svg_chunk.elements:
-        if isinstance(element, svgwrite.shapes.Rect):
-            element.attribs['x'] = str(float(element.attribs['x']) + x_offset)
-            element.attribs['y'] = str(float(element.attribs['y']) + y_offset)
-        svg.add(element)
 
 # Função para fazer a predição de um chunk
 def predict_chunk(net, chunk, device):
@@ -144,70 +145,35 @@ def predict_chunk(net, chunk, device):
         return mask_image
 
 # Função para processar e salvar um chunk
-def process_and_save_chunk(net, chunk, x_offset, y_offset, device, output_dir, chunk_index):
+def process_and_save_chunk(net, chunk, x_offset, y_offset, device, output_dir, chunk_index, geotransform):
     logging.info(f"Processing chunk {chunk_index}, x_offset: {x_offset}, y_offset: {y_offset}")
     
-    # Verificar se o chunk contém apenas valores zero
     if np.min(chunk) == 0 and np.max(chunk) == 0:
-        logging.info(f"Chunk {chunk_index} contém apenas zeros. Criando SVG vazio.")
-        svg_filename = create_empty_svg(chunk.shape[1], chunk.shape[2], output_dir, chunk_index)
-        return (svg_filename, x_offset, y_offset)
+        logging.info(f"Chunk {chunk_index} contém apenas zeros.")
+        return None
 
-    # Salvar o chunk original como imagem PNG
-    chunk_image_path = save_chunk_image(chunk, chunk.shape[1], chunk.shape[2], chunk_index)
-    logging.info(f"Chunk image saved at {chunk_image_path}")
-
-    # Gerar a máscara
     mask_chunk = predict_chunk(net, chunk, device)
-
-    if np.sum(mask_chunk) == 0:
-        logging.warning(f"Chunk {chunk_index} contém apenas zeros (máscara vazia)")
-
-    # Salvar o SVG correspondente ao chunk
-    svg_filename = save_chunk_svg(mask_chunk, chunk.shape[1], chunk.shape[2], output_dir, chunk_index)
-    return (svg_filename, x_offset, y_offset)
-
-# Função para criar um SVG vazio para chunks que não contêm dados válidos
-def create_empty_svg(x_chunk, y_chunk, output_dir, chunk_index):
-    svg_chunk = svgwrite.Drawing(size=(x_chunk, y_chunk))
+    geojson_filename = save_chunk_geojson(mask_chunk, x_offset, y_offset, geotransform, output_dir, chunk_index)
+    png_preview_path = save_chunk_image_from_mask(mask_chunk, mask_chunk.shape[1], mask_chunk.shape[0], chunk_index)
     
-    os.makedirs(PROVISORY_FOLDER, exist_ok=True)
-    svg_filename = os.path.join(PROVISORY_FOLDER, f"chunk_{chunk_index}_empty.svg")
-    
-    svg_chunk.saveas(svg_filename)
-    return svg_filename
-
-# Função para salvar cada chunk como SVG
-def save_chunk_svg(mask_chunk, x_chunk, y_chunk, output_dir, chunk_index):
-    svg_chunk = svgwrite.Drawing(size=(x_chunk, y_chunk))
-    mask_svg = mask_to_svg_multiclass(mask_chunk, (x_chunk, y_chunk))
-    
-    os.makedirs(PROVISORY_FOLDER, exist_ok=True)
-    svg_filename = os.path.join(PROVISORY_FOLDER, f"chunk_{chunk_index}.svg")
-    
-    mask_svg.saveas(svg_filename)
-    return svg_filename
+    return geojson_filename, png_preview_path
 
 # Processamento sequencial de chunks (sem paralelismo)
 def process_large_tiff_and_save_chunks(tiff_file, model, chunk_size=(1024, 1024), device='cpu', resize_factor=0.5):
-    # Certifique-se de que o dataset está sendo aberto corretamente
     dataset = gdal.Open(tiff_file)
     if dataset is None:
-        logging.error(f"Erro: Não foi possível abrir o arquivo TIFF: {tiff_file}. Verifique as permissões e o caminho do arquivo.")
+        logging.error(f"Erro: Não foi possível abrir o arquivo TIFF: {tiff_file}")
         return [], (0, 0)
 
     x_size = dataset.RasterXSize
     y_size = dataset.RasterYSize
+    geotransform = dataset.GetGeoTransform()
 
-    # Redimensionar a imagem antes de processar
     new_width = int(x_size * resize_factor)
     new_height = int(y_size * resize_factor)
-
-    # Criar um arquivo TIFF temporário para o redimensionamento
     resized_tiff = os.path.join(PROVISORY_FOLDER, "resized_image.tif")
     resize_tiff(tiff_file, new_width, new_height, resized_tiff)
 
-    # Reabrir o TIFF redimensionado para continuar o processamento
     dataset = gdal.Open(resized_tiff)
     if dataset is None:
         logging.error(f"Erro: Não foi possível abrir o arquivo TIFF redimensionado: {resized_tiff}")
@@ -221,60 +187,74 @@ def process_large_tiff_and_save_chunks(tiff_file, model, chunk_size=(1024, 1024)
     state_dict = torch.load(model, map_location=device)
     net.load_state_dict(state_dict['model_state_dict'])
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        chunk_paths = []
-        chunk_index = 0
+    chunk_paths = []
+    preview_paths = []
+    chunk_index = 0
 
-        for x_offset in tqdm(range(0, x_size, chunk_size[0]), desc="Processing Chunks"):
-            for y_offset in range(0, y_size, chunk_size[1]):
-                x_chunk = min(chunk_size[0], x_size - x_offset)
-                y_chunk = min(chunk_size[1], y_size - y_offset)
+    for x_offset in tqdm(range(0, x_size, chunk_size[0]), desc="Processing Chunks"):
+        for y_offset in range(0, y_size, chunk_size[1]):
+            start_time = time.time()
 
-                chunk = dataset.ReadAsArray(x_offset, y_offset, x_chunk, y_chunk)
+            x_chunk = min(chunk_size[0], x_size - x_offset)
+            y_chunk = min(chunk_size[1], y_size - y_offset)
 
-                # Verificar se os valores do chunk são significativos
-                logging.info(f"Valores do chunk {chunk_index}: Min={np.min(chunk)}, Max={np.max(chunk)}")
+            chunk = dataset.ReadAsArray(x_offset, y_offset, x_chunk, y_chunk)
+            result = process_and_save_chunk(net, chunk, x_offset, y_offset, device, PROVISORY_FOLDER, chunk_index, geotransform)
+            
+            if result:
+                geojson_filename, png_preview_path = result
+                chunk_paths.append(geojson_filename)
+                preview_paths.append(png_preview_path)
+            chunk_index += 1
 
-                chunk_paths.append(process_and_save_chunk(net, chunk, x_offset, y_offset, device, temp_dir, chunk_index))
-                chunk_index += 1
+            logging.info(f"Chunk {chunk_index} processed in {time.time() - start_time:.2f} seconds")
 
-        return chunk_paths, (new_width, new_height)
+    return chunk_paths, preview_paths, (new_width, new_height)
 
-# Função final para combinar os chunks e gerar um único SVG
-def merge_chunks_to_svg(chunk_paths, x_size, y_size):
-    svg_final = svgwrite.Drawing(size=(x_size, y_size))
+def combine_and_resize_chunks(preview_paths, output_path, tiff_file, final_size=(1024, 1024), chunk_size=(1024, 1024), resize_factor=1.0):
+    # Carregar o arquivo TIFF original para obter as dimensões
+    dataset = gdal.Open(tiff_file)
+    x_size = dataset.RasterXSize
+    y_size = dataset.RasterYSize
+    new_width = int(x_size * resize_factor)
+    new_height = int(y_size * resize_factor)
 
-    # Combinar todos os SVGs individuais
-    for chunk_path, x_offset, y_offset in tqdm(chunk_paths, desc="Merging Chunks"):
-        # Carregar o conteúdo do SVG chunk como XML
-        try:
-            tree = ET.parse(chunk_path)
-            root = tree.getroot()
+    # Calcular o número de chunks em x e y
+    num_chunks_x = (new_width + chunk_size[0] - 1) // chunk_size[0]
+    num_chunks_y = (new_height + chunk_size[1] - 1) // chunk_size[1]
 
-            # Iterar sobre todos os elementos <rect> no SVG chunk
-            for element in root.findall('.//{http://www.w3.org/2000/svg}rect'):
-                # Extrair atributos e ajustar as coordenadas
-                x = float(element.get('x', 0)) + x_offset
-                y = float(element.get('y', 0)) + y_offset
-                width = float(element.get('width'))
-                height = float(element.get('height'))
-                fill_color = element.get('fill')
+    # Criar uma imagem grande para combinar os chunks
+    combined_image = Image.new("RGB", (new_width, new_height))
 
-                # Adicionar o retângulo ajustado ao SVG final
-                svg_final.add(svg_final.rect(
-                    insert=(x, y),
-                    size=(width, height),
-                    fill=fill_color,
-                    stroke='none'
-                ))
-        except ET.ParseError as e:
-            logging.error(f"Erro ao parsear o SVG chunk {chunk_path}: {e}")
+    # Ordenar preview_paths para garantir que os chunks estejam na ordem correta
+    preview_paths = sorted(preview_paths, key=lambda x: int(os.path.basename(x).split('_')[1]))
 
-    return svg_final.tostring()
+    # Loop para carregar cada chunk e posicioná-lo na imagem grande
+    for i, chunk_path in enumerate(preview_paths):
+        # Carregar o chunk
+        chunk_image = Image.open(chunk_path)
 
-# Função para criar a máscara e salvar o SVG final
+        
+        # Calcular a posição (x, y) onde o chunk deve ser colado na imagem final
+        print("x_offset: " + str(i % num_chunks_x) + " Calculo: " + str(chunk_image.width))
+        print("y_offset: " + str(i % num_chunks_x) + " Calculo: " + str(chunk_image.height))
+        x_offset = (i % num_chunks_x) * chunk_image.width
+        y_offset = (i // num_chunks_x) * chunk_image.height
+
+        # Colar o chunk redimensionado na imagem grande
+        combined_image.paste(chunk_image, (y_offset, x_offset))
+
+    # Redimensionar a imagem combinada para o tamanho final de 1024x1024
+    resized_image = combined_image.resize(final_size, Image.LANCZOS)
+
+    # Salva a imagem final consolidada
+    resized_image.save(output_path)
+    print(f"Imagem PNG final de 1024x1024 salva em: {output_path}")
+
+    return f"http://localhost:8080/view/{os.path.basename(output_path)}"
+
+# Função principal para criar a máscara, PNG preview e GeoJSON
 def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bilinear, classes, avaliacao):
-
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
     if isinstance(input, str):
@@ -282,81 +262,54 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
 
     if os.path.isdir(input[0]):
         filenames = os.listdir(input[0])
-        in_files = []
-        for filename in filenames:
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif')):
-                in_files.append(os.path.join(input[0], filename))
-        input = in_files
+        in_files = [os.path.join(input[0], filename) for filename in filenames if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif'))]
     else:
         in_files = input
 
     out_files = get_output_filenames(input)
-
     net = UNet(n_channels=3, n_classes=classes, bilinear=bilinear)
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Loading model')
-    logging.info(f'Using device {device}')
-
+    
+    logging.info(f'Loading model on device {device}')
     net.to(device=device)
     state_dict = torch.load(model, map_location=device)
-    mask_values = state_dict.pop('mask_values', [0, 1])
     net.load_state_dict(state_dict['model_state_dict'])
 
-    logging.info('Model loaded!')
+    geojson_list = []
     pngsList = []
-    download_links = []  # Para armazenar os links de download
+    download_links = []
 
-    for i, filename in enumerate(in_files):
-        if "\\" in filename:
-            filename = filename.replace("\\", "/")
-        logging.info(f'Predicting image {filename} ...')
-        svg = filename.split('/')[0]+ "/preview/" + filename.split('/')[2].split('.')[0] + "_OUT_multiclass_mask.svg"
-        print(svg)
-        #if(not os.path.exists(svg)):
-        chunk_paths, new_size = process_large_tiff_and_save_chunks(
-            tiff_file=filename,
-            model=model,
-            chunk_size=(1024, 1024),
-            device=device,
-            resize_factor=refactor_size
-        )
+    if(avaliacao):
+        pngsList, download_links = predict_and_save(input[0], model, output, device)
+    else:
+        for i, filename in enumerate(in_files):
+            logging.info(f'Predicting image {filename} ...')
+            chunk_paths, preview_paths, new_size = process_large_tiff_and_save_chunks(
+                tiff_file=filename,
+                model=model,
+                chunk_size=(1024, 1024),
+                device=device,
+                resize_factor=refactor_size
+            )
 
-        svg_final = merge_chunks_to_svg(chunk_paths, x_size=new_size[0], y_size=new_size[1])
-        #else:
-        #    svg_final = read_svg_file(svg)
-            
-        """ # Ajuste para usar dimensões menores e gerar SVG comprimido
-        compressed_svg = compress_svg(svg_final, width=747, height=768)
-        svg_base64 = convert_svg_to_base64(compressed_svg)
-        svgsList.append(svg_base64) """
+            # Salvar o GeoJSON final consolidado
+            print("Output original: ",filename)
+            print("Output exterior: ", output)
+            geojson_output = os.path.join(output, f"{filename.replace('.tif', '.geojson')}".split("\\")[-1])
+            with open(geojson_output, 'w', encoding='utf-8') as f:
+                geojson_data = {"type": "FeatureCollection", "features": []}
+                for chunk_path in chunk_paths:
+                    with open(chunk_path, 'r') as chunk_file:
+                        chunk_data = json.load(chunk_file)
+                        geojson_data["features"].extend(chunk_data["features"])
+                json.dump(geojson_data, f)
+            logging.info(f'GeoJSON saved to {geojson_output}')
 
-        # Converta o SVG final para PNG e salve
-        png_data = svg_to_png_base64(svg_final, width=747, height=768)
+            geojson_list.append(geojson_output)
+            download_links.append(f"http://localhost:8080/download/{os.path.basename(geojson_output)}")
 
-
-        if not no_save:
-            os.makedirs(output, exist_ok=True)
-            print(output)
-            print(out_files)
-            svg_filename = os.path.join(output, f"{out_files[i].replace('.png', f'.svg')}".split('/')[-1].split("\\")[-1])
-            with open(svg_filename, 'w', encoding='utf-8') as f:
-                f.write(svg_final)
-            logging.info(f'SVG saved to {svg_filename}')
-            
-
-            # Adicionar o link de download
-            download_link = f"http://localhost:8080/download/{os.path.basename(svg_filename)}"
-            download_links.append(download_link)
-
-            # Salvar o PNG convertido
-            png_filename = os.path.join(output, f"{out_files[i]}".split('/')[-1].split("\\")[-1])
-            with open(png_filename, 'wb') as f:
-                f.write(png_data)  # Decodifique a string Base64 para bytes e salve como PNG
-            logging.info(f'PNG saved to {png_filename}')
-            
-            # Adicionar o link de download para o PNG
-            png_download_link = f"http://localhost:8080/view/{os.path.basename(png_filename)}"
-            pngsList.append(png_download_link)
+            png_output = os.path.join(output, f"{filename.replace('.tif', '.png')}".split('/')[-1].split("\\")[-1])
+            preview_links = combine_and_resize_chunks(preview_paths, png_output, filename, (1024,1024), (1024,1024), refactor_size)
+            pngsList.append(preview_links)
 
     return {"pngs": pngsList, "download_links": download_links}
