@@ -51,7 +51,8 @@ def geojson_to_png(geojson_file, output_png, output_size=(1024, 1024)):
     print(f"Imagem salva em: {output_png} com tamanho {output_size[0]}x{output_size[1]}")
     return output_png
 
+""" 
 # Exemplo de uso
 geojson_file = 'preview/CBERS4A_WPM_PCA_RGB321_20240924_197_123.geojson'
 output_png = 'preview/saida_arquivo_resized_1024x1024.png'
-geojson_to_png(geojson_file, output_png, output_size=(1024, 1024))
+geojson_to_png(geojson_file, output_png, output_size=(1024, 1024)) """
