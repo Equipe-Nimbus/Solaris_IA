@@ -7,9 +7,11 @@ import time
 from osgeo import gdal
 from tqdm import tqdm
 from PIL import Image
+from Modelo.Tipos.Previsao import Previsao
 from Modelo.unet import UNet
 import json
 from shapely.geometry import Polygon, mapping
+from Servicos import calculaPorcentagem
 from Servicos.geojsonToPNG import geojson_to_png
 from Modelo.predict_thumbnail import predict_and_save
 
@@ -278,6 +280,7 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
     geojson_list = []
     pngsList = []
     download_links = []
+    previsoes = []
 
     if(avaliacao):
         pngsList, download_links = predict_and_save(input[0], model, output, device)
@@ -293,8 +296,7 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
             )
 
             # Salvar o GeoJSON final consolidado
-            print("Output original: ",filename)
-            print("Output exterior: ", output)
+
             geojson_output = os.path.join(output, f"{filename.replace('.tif', '.geojson')}".split("\\")[-1])
             with open(geojson_output, 'w', encoding='utf-8') as f:
                 geojson_data = {"type": "FeatureCollection", "features": []}
@@ -305,11 +307,14 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
                 json.dump(geojson_data, f)
             logging.info(f'GeoJSON saved to {geojson_output}')
 
-            #geojson_list.append(geojson_output)
-            download_links.append(f"http://localhost:8080/download/{os.path.basename(geojson_output)}")
 
             png_output = os.path.join(output, f"{filename.replace('.tif', '.png')}".split('/')[-1].split("\\")[-1])
             geojson_to_png(geojson_output, png_output)
-            pngsList.append(f"http://localhost:8080/view/{os.path.basename(png_output)}")
+            previsao = Previsao(
+                f"http://localhost:8080/download/{os.path.basename(geojson_output)}",
+                f"http://localhost:8080/view/{os.path.basename(png_output)}",
+                calculaPorcentagem(os.path.basename(png_output))
+            )
+            previsoes.append(previsao)
 
-    return {"pngs": pngsList, "download_links": download_links}
+    return {previsoes:previsoes}

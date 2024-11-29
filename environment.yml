@@ -17,6 +17,7 @@ dependencies:
   - shapely
   - geopandas
   - seaborn
+  - opencv
   - pip:
       - cairosvg
       - svgwrite
