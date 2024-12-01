@@ -14,6 +14,7 @@ CriacaoDataset/__pycache__
 preview/*
 !preview/.gitkeep
 Modelo/chunks/*
+Tipos/__pycache__
 !Modelo/chunks/.gitkeep
 CriacaoDataset\DataSet\anotacao\*
 !CriacaoDataset\DataSet\anotacao\.gitkeep

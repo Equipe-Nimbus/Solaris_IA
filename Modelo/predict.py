@@ -7,13 +7,14 @@ import time
 from osgeo import gdal
 from tqdm import tqdm
 from PIL import Image
-from Modelo.Tipos.Previsao import Previsao
+from Tipos.Previsao import Previsao
 from Modelo.unet import UNet
 import json
 from shapely.geometry import Polygon, mapping
-from Servicos import calculaPorcentagem
+from Servicos.calculaPorcentagem import calcular_cobertura
 from Servicos.geojsonToPNG import geojson_to_png
 from Modelo.predict_thumbnail import predict_and_save
+from Servicos.redimencionaImagem import resize_image_to_match
 
 # Definir o caminho da pasta de arquivos provisórios
 PROVISORY_FOLDER = "Modelo/chunks"
@@ -256,7 +257,7 @@ def combine_and_resize_chunks(preview_paths, output_path, tiff_file, final_size=
     return f"http://localhost:8080/view/{os.path.basename(output_path)}"
 
 # Função principal para criar a máscara, PNG preview e GeoJSON
-def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bilinear, classes, avaliacao):
+def run_predict(model, input, output, list, refactor_size, bilinear, classes, avaliacao):
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
     if isinstance(input, str):
@@ -265,6 +266,9 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
     if os.path.isdir(input[0]):
         filenames = os.listdir(input[0])
         in_files = [os.path.join(input[0], filename) for filename in filenames if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif'))]
+        filenames = sorted(filenames, key=lambda x: list.index(x) if x in list else float('inf'))
+        filenames = [filename for filename in filenames if filename != '.gitkeep']
+        print("FILENAMES: "+ str(filenames))
     else:
         in_files = input
 
@@ -280,7 +284,7 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
     geojson_list = []
     pngsList = []
     download_links = []
-    previsoes = []
+    previsoesLista = []
 
     if(avaliacao):
         pngsList, download_links = predict_and_save(input[0], model, output, device)
@@ -307,14 +311,24 @@ def run_predict(model, input, output, no_save, mask_threshold, refactor_size, bi
                 json.dump(geojson_data, f)
             logging.info(f'GeoJSON saved to {geojson_output}')
 
+            
 
             png_output = os.path.join(output, f"{filename.replace('.tif', '.png')}".split('/')[-1].split("\\")[-1])
             geojson_to_png(geojson_output, png_output)
+            print(png_output)
+            estatistica = calcular_cobertura(png_output)
+            print(estatistica.to_dict)
             previsao = Previsao(
                 f"http://localhost:8080/download/{os.path.basename(geojson_output)}",
                 f"http://localhost:8080/view/{os.path.basename(png_output)}",
-                calculaPorcentagem(os.path.basename(png_output))
+                estatistica
             )
-            previsoes.append(previsao)
+            print(previsao.to_dict())
+            print(type(previsao.to_dict()))
+            previsoesLista.append(previsao.to_dict())
 
-    return {previsoes:previsoes}
+    for item in previsoesLista:
+        print(item)
+        print(type(item))
+
+    return {"previsoes":previsoesLista}
