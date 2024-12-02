@@ -1,3 +1,4 @@
+import os
 from Modelo.predict import run_predict
 from Servicos.delete import delete_downloaded_files
 from Servicos.download import download_file
@@ -10,24 +11,24 @@ OUTPUT_FOLDER = "preview"
 app = Flask(__name__)
 app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 
-@app.route('/geraMascaraThumbnail', methods=['POST'])
+@app.route('/geraMascara', methods=['POST'])
 def create_item():
     links = request.json["links"]
     download_file(links)
+    list_filenames = [os.path.basename(url) for url in links]
     result = run_predict(
         model="Modelo/checkpoints/checkpoint_epoch183.pth", 
         input="Modelo/arquivosProvisorios", 
         output=OUTPUT_FOLDER, 
-        no_save=False, 
-        mask_threshold=0.5, 
+        list=list_filenames,
         refactor_size=0.1, 
         bilinear=False, 
         classes=3, 
         avaliacao=False
     )
-    delete_downloaded_files(links)
+    #delete_downloaded_files(links)
     # Retornar os links de download
-    return jsonify(result), 200
+    return result, 200
 
 @app.route('/download/<filename>', methods=['GET'])
 def download_files(filename):

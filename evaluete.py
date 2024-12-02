@@ -48,7 +48,7 @@ def evaluate_and_compare(image_paths, mask_paths, predict_paths, device, image_s
 
         # Permutar as dimensões para (H, W, C) antes de exibir
         img_np = img_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-        """ # Exibir a imagem original que está sendo analisada
+        # Exibir a imagem original que está sendo analisada
         plt.imshow(img_np)
         plt.title(f'Analisando: {os.path.basename(img_path)}\nMáscara: {os.path.basename(mask_path)}')
         plt.axis('off')
@@ -71,7 +71,7 @@ def evaluate_and_compare(image_paths, mask_paths, predict_paths, device, image_s
         ax[2].set_title('Máscara Prevista')
         ax[2].axis('off')
 
-        plt.show() """
+        plt.show()
 
         # Binarizar ambas as máscaras para comparação correta
         mask_true_np = (mask_true.cpu().numpy() > 0).astype(np.uint8)  # Máscara real
@@ -150,7 +150,7 @@ def main(model_path, image_dir, mask_dir):
 
 # Chamada da função principal
 if __name__ == '__main__':
-    model_path = './Modelo/checkpoints/checkpoint_epoch31.pth'  # Substitua pelo caminho do seu modelo
+    model_path = './Modelo/checkpoints/checkpoint_epoch183.pth'  # Substitua pelo caminho do seu modelo
     image_dir = './avaliacao/imgs'  # Substitua pelo caminho das suas imagens
     mask_dir = './avaliacao/mask'  # Substitua pelo caminho das suas máscaras
 
